@@ -1,0 +1,16 @@
+name: LambdaTest
+description: Starts LambdaTest Tunnel for a given build
+author: https://github.com/LambdaTest
+requirements:
+  - buildkite-agent
+  - bash
+  - curl
+  - unzip
+  - sleep
+public: true
+configuration:
+  properties:
+    tunnel-name:
+      type: string
+  required: []
+  additionalProperties: false

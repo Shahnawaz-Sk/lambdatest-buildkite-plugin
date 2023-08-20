@@ -1,0 +1,128 @@
+#!/bin/bash
+set -euo pipefail
+
+PLUGIN_NAME=lambdatest-buildkite-plugin
+
+# Allow passing TMP_DIR for testing purposes
+if [[ -z "${TMP_DIR:-}" ]]; then
+  TMP_DIR="${TMPDIR:-/tmp}/${PLUGIN_NAME}"
+  mkdir -p "${TMP_DIR}"
+  export BUILDKITE_PLUGIN_LAMBDATEST_TMP_DIR="${TMP_DIR}"
+fi
+
+DEFAULT_LAMBDATEST_VERSION="1.0.0"
+
+error() {
+  local message="$1"
+  echo "lambdatest: [lambdatest-buildkite-plugin] Error: ${message}" >&2
+  exit 1
+}
+
+check_set() {
+  local name="$1"
+  if [[ -z "${!name:-}" ]]; then
+    error "${name} not set"
+  fi
+
+}
+
+maybe_download_lt_archive() {
+  local lt_binary="$1"
+  local lt_archive_path="${TMP_DIR}/${lt_binary}"
+
+
+  if [[ ! -e "${lt_archive_path}" ]]; then
+    local tmp_archive_path
+
+
+    curl -fsSL --create-dirs --retry 5 -o "LT_binary.zip" "https://downloads.lambdatest.com/tunnel/v3/${lt_binary}"
+
+    unzip "LT_binary.zip"
+
+   
+  fi
+  
+}
+
+maybe_download_lt() {
+  if [[ -e "${TMP_DIR}/LT_binary.zip" ]]; then
+    echo "Binary already exists. Skipping download."
+    return
+  fi
+  
+  pushd "${TMP_DIR}" >/dev/null || return
+  
+  local os=""
+  local lt_binary=""
+  
+  case "${OSTYPE}" in
+    linux*) 
+      os="linux"; lt_binary="linux/64bit/LT_Linux.zip"
+      ;;
+
+    darwin*) 
+      os="osx"; lt_binary="mac/64bit/LT_Mac.zip"
+      ;;
+
+    cygwin*|msys*|win32*|win64*) 
+      os="Windows"; lt_binary="windows/64bit/LT_Windows.zip"
+      ;;
+    *) error "Unknown OS: ${OSTYPE}";;
+  esac
+  
+  local lt_zip_path
+
+
+  lt_zip_path=$(maybe_download_lt_archive "${lt_binary}")
+
+  
+  popd >/dev/null || return
+}
+
+
+main() {
+  check_set LT_USERNAME
+  check_set LT_ACCESS_KEY
+  [[ -z "${BUILDKITE_PLUGIN_LAMBDATEST_TUNNEL_IDENTIFIER:-}" ]] && check_set BUILDKITE_JOB_ID
+
+  local tunnel_identifier="${BUILDKITE_PLUGIN_LAMBDATEST_TUNNEL_IDENTIFIER:-${BUILDKITE_JOB_ID}}"
+
+  maybe_download_lt
+
+   start \
+    "LT-${BUILDKITE_JOB_ID}" \
+    "${LT_USERNAME}" \
+    "${LT_ACCESS_KEY}"
+  
+  
+}
+
+start() {
+  local tunnel_name="$1"
+  local lt_username="$2"
+  local lt_access_key="$3"
+
+  echo "LambdaTest: Starting Tunnel"
+  local pidfile="${TMP_DIR}/pid.${BUILDKITE_JOB_ID}"
+
+  pushd "${TMP_DIR}" >/dev/null
+
+  if [[ -z "${IS_UNDER_TEST:-}" ]]; then
+    export PATH="${TMP_DIR}:${PATH}"
+  fi
+  ./LT \
+    -u "${lt_username}" \
+    -k "${lt_access_key}" \
+    --tunnelName "${tunnel_name}" \
+    --pidfile "${pidfile}" \
+    --logFile "${TMP_DIR}/"LT-${BUILDKITE_JOB_ID}".log" \
+    --verbose \
+    &
+
+  local pid="$!"
+
+  popd >/dev/null
+
+}
+
+main

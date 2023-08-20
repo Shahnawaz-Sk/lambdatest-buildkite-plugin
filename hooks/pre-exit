@@ -1,0 +1,57 @@
+#!/bin/bash
+set -euo pipefail
+
+# Allow to pass TMP_DIR for testing purposes
+if [[ -z "${TMP_DIR:-}" ]]; then
+
+  TMP_DIR="${BUILDKITE_PLUGIN_LAMBDATEST_TMP_DIR:-}"
+  function cleanup {
+
+    echo "Removing ${TMP_DIR}"
+    if [[ -d "${TMP_DIR}" ]]; then
+        rm -rf "${TMP_DIR}"
+    fi
+  }
+else
+  function cleanup {
+    echo "Not removing given TMP_DIR (${TMP_DIR})"
+  }
+fi
+trap cleanup EXIT
+
+is_pid_alive() {
+  local pid="$1"
+  kill -0 "${pid}" >/dev/null 2>&1
+}
+
+stop_tunnel() {
+
+  echo "Stopping LambdaTest Tunnel"
+  pushd "${TMP_DIR}" >/dev/null
+  local find_pidfiles
+  find_pidfiles=$(find . -maxdepth 1 -name 'pid.*' -type f)
+
+  local pidfile
+  while read -r pidfile; do
+    if [[ -e "${pidfile}" ]]; then
+      local pid
+      pid=$(cat "${pidfile}")
+      kill -SIGINT "${pid}" || true
+      local counter=0
+      while is_pid_alive "${pid}"; do
+        sleep 1
+        counter=$((counter+1))
+        if [[ "${counter}" -gt 60 ]]; then
+          # try to kill again after a minute
+          kill -SIGINT "${pid}" 2>/dev/null || true
+        fi
+        echo "Tunnel Successfully Stopped"
+      done
+      echo
+    fi
+  done <<< "${find_pidfiles}"
+  popd >/dev/null
+  
+}
+
+stop_tunnel
