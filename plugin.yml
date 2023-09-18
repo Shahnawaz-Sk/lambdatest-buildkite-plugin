@@ -10,7 +10,7 @@ requirements:
 public: true
 configuration:
   properties:
-    tunnel-name:
+    tunnelName:
       type: string
   required: []
   additionalProperties: false

@@ -4,4 +4,10 @@ services:
     image: buildkite/plugin-tester:v4.0.0
     volumes:
       - ".:/plugin:ro"
+
+  lint:
+    image: buildkite/plugin-linter
+    command: ['--id', 'lambdatest/lambdatest-plugin']
+    volumes:
+      - ".:/plugin:ro"
       
